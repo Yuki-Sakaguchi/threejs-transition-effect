@@ -12,6 +12,18 @@ import t2 from '../t2.jpg';
 import t3 from '../t3.jpg';
 import mask from '../mask.jpg';
 
+// addon
+// https://threejs.org/docs/#manual/en/introduction/How-to-use-post-processing
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { GlitchPass } from 'three/examples/jsm/postprocessing/GlitchPass.js';
+
+// 自作のシェーダー （参考：https://threejs.org/examples/jsm/shaders/DotScreenShader.js）
+// import { DotScreenShader } from './dotEffect.js';
+import { CurtainShader } from './effect.js';
+import { RGBAShader } from './effect2.js';
+
 // https://github.com/mattdesl/simple-input-events
 const createInputEvents = require('simple-input-events');
 
@@ -46,18 +58,20 @@ export default class Sketch {
 
     this.camera.position.set(0, 0, 900);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.step = 0;
     this.time = 0;
     this.mouse = new THREE.Vector2();
     this.mouseTarget = new THREE.Vector2();
 
     this.isPlaying = true;
 
+    this.initPost();
     this.addObjects();
     this.resize();
     this.render();
     this.setupResize();
     this.events();
-    // this.initSettings();
+    this.initSettings();
 
     // マスクを生のcanvasでやるならこんな感じ
     //   let canvas = document.createElement('canvas');
@@ -81,20 +95,92 @@ export default class Sketch {
 
   }
 
+  initPost() {
+    this.composer = new EffectComposer(this.renderer);
+
+    const renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(renderPass)
+
+    this.effectPass = new ShaderPass(CurtainShader);
+    this.composer.addPass(this.effectPass);
+
+    this.effectPass2 = new ShaderPass(RGBAShader);
+    this.composer.addPass(this.effectPass2);
+  }
+
   events() {
     this.event.on('move', ({ uv }) => {
       this.mouse.x = uv[0] - 0.5;
       this.mouse.y = uv[1] - 0.5;
-      console.log(this.mouse)
     });
   }
 
   initSettings() {
     this.settings = {
       progress: 0,
+      progress1: 0,
+      runAnimation: () => {
+        this.runAnimation();
+      },
     };
     this.gui = new GUI();
     this.gui.add(this.settings, "progress", 0, 1, 0.01);
+    this.gui.add(this.settings, "progress1", 0, 1, 0.01).onChange(val => {
+      this.effectPass.uniforms.uProgress.value = val;
+    });
+    this.gui.add(this.settings, 'runAnimation');
+  }
+
+  runAnimation() {
+    let tl = gsap.timeline();
+
+    this.step++;
+    let target = this.step * 2500;
+    if (this.step >= this.textures.length) {
+      target = 0;
+      this.step = 0;
+    }
+
+    // カメラを移動させる
+    tl.to(this.camera.position, {
+      x: target,
+      duration: 1.5,
+      ease: 'power4.inOut'
+    });
+    tl.to(this.camera.position, {
+      z: 700,
+      duration: 1,
+      ease: 'power4.inOut'
+    }, 0);
+    tl.to(this.camera.position, {
+      z: 900,
+      duration: 1,
+      ease: 'power4.inOut'
+    }, 1);
+
+    // カーテン効果のエフェクトを動かして元に戻す
+    tl.to(this.effectPass.uniforms.uProgress, {
+      value: 1,
+      duration: 0.8,
+      ease: 'power3.inOut'
+    }, 0);
+    tl.to(this.effectPass.uniforms.uProgress, {
+      value: 0,
+      duration: 0.8,
+      ease: 'power3.inOut'
+    }, 1);
+
+    // RGB効果のエフェクトを動かして元に戻す
+    tl.to(this.effectPass2.uniforms.uProgress, {
+      value: 1,
+      duration: 0.5,
+      ease: 'power3.inOut'
+    }, 0);
+    tl.to(this.effectPass2.uniforms.uProgress, {
+      value: 0,
+      duration: 0.5,
+      ease: 'power3.inOut'
+    }, 1);
   }
 
   setupResize() {
@@ -105,27 +191,13 @@ export default class Sketch {
     this.width = this.container.offsetWidth;
     this.height = this.container.offsetHeight;
     this.renderer.setSize(this.width, this.height);
+    this.composer.setSize(this.width, this.height);
     this.camera.aspect = this.width / this.height;
 
     this.camera.updateProjectionMatrix();
   }
 
   addObjects() {
-    // this.material = new THREE.ShaderMaterial({
-    //   extensions: {
-    //     derivatives: "#extension GL_OES_standard_derivativers : enable",
-    //   },
-    //   side: THREE.DoubleSide,
-    //   uniforms: {
-    //     time: { value: 0 },
-    //     resolution: { value: new THREE.Vector4() },
-    //   },
-    //   // wireframe: true,
-    //   // transparent: true,
-    //   vertexShader: vertex,
-    //   fragmentShader: fragment,
-    // });
-
     // 画像を読み込む
     this.textures = [t1, t2, t3];
     this.textures = this.textures.map(t => new THREE.TextureLoader().load(t));
@@ -138,27 +210,35 @@ export default class Sketch {
     // this.scene.add(this.plane);
 
     // 複数画像を用意する時はこんなかんじ
-    this.group = new THREE.Group();
-    this.scene.add(this.group);
+    this.groups = [];
 
     this.geometry = new THREE.PlaneGeometry(1920, 1080, 1, 1);
 
-    // 3つの画像を重ねる
-    for (let i = 0; i < 3; i++) {
-      let materialOpstion = {
-        map: this.textures[0],
+    this.textures.forEach((t, j) => {
+      let group = new THREE.Group();
+      this.scene.add(group);
+      this.groups.push(group);
+
+      // 3つの画像を重ねる(数を変えると面白い感じになる)
+      for (let i = 0; i < 3; i++) {
+        let materialOpstion = {
+          map: t,
+        }
+        // 最初のやつ以外はマスクして透けるようにする
+        if (i > 0) {
+          materialOpstion.alphaMap = this.maskTexture
+          materialOpstion.transparent = true
+        }
+        let material = new THREE.MeshBasicMaterial(materialOpstion);
+        let mesh = new THREE.Mesh(this.geometry, material);
+        // 重ねる画像は徐々に手間に配置する
+        mesh.position.z = (i * 1) * 100;
+        group.add(mesh);
+        group.position.x = j * 2500;
       }
-      // 最初のやつ以外はマスクして透けるようにする
-      if (i > 0) {
-        materialOpstion.alphaMap = this.maskTexture
-        materialOpstion.transparent = true
-      }
-      let material = new THREE.MeshBasicMaterial(materialOpstion);
-      let mesh = new THREE.Mesh(this.geometry, material);
-      // 重ねる画像は徐々に手間に配置する
-      mesh.position.z = (i * 1) * 100;
-      this.group.add(mesh);
-    }
+    })
+
+
   }
 
   addLights() {
@@ -185,14 +265,23 @@ export default class Sketch {
     if (!this.isPlaying) return;
     this.time += 0.05;
 
-    this.mouseTarget.lerp(this.mouse, 0.1);
+    this.oscilaltor = Math.sin(this.time * 0.1) * 0.5 + 0.5;
 
-    this.group.rotation.x = -this.mouseTarget.y * 0.3;
-    this.group.rotation.y = -this.mouseTarget.x * 0.3;
+    this.mouseTarget.lerp(this.mouse, 0.1)
+
+    this.groups.forEach(g => {
+      g.rotation.x = -this.mouseTarget.y * 0.3;
+      g.rotation.y = -this.mouseTarget.x * 0.3;
+
+      g.children.forEach((m, i) => {
+        m.position.z = (i + 1) * 100 - this.oscilaltor * 200;
+      })
+    })
 
     // this.material.uniforms.time.value = this.time;
     requestAnimationFrame(this.render.bind(this));
-    this.renderer.render(this.scene, this.camera);
+    // this.renderer.render(this.scene, this.camera);
+    this.composer.render();
   }
 }
 
