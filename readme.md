@@ -1,4 +1,7 @@
 # 画像を３枚重ねてマスクして幻想的な表現をする
+https://yuki-sakaguchi.github.io/threejs-transition-effect/dist/
+
+https://user-images.githubusercontent.com/16290220/196021923-c8663235-176e-4ce4-be07-844f65b99228.mov
 
 
 ## 考え方
@@ -7,6 +10,8 @@
 一番奥のやつ以外はマスクして（`alphaMap`にマスク画像を設定） `transparent` を `true` にして透けるようにする 
   
 マスクの画像はThree.jsだと反転しているみたいなので、マスクして消したいところを黒、それ以外を白にすると良いらしい
+
+アニメーションは three.js のアドオンで `EffectComposer` とかを使ってシェーダーを書いて、それを `gsap` でアニメーションさせた
 
 ## メモ
 ### マウスの位置を取得したりするのに `simple-input-events` というライブラリを使ってた  
@@ -73,6 +78,19 @@ https://threejs.org/examples/#webgl_postprocessing
 ↓  
 https://threejs.org/examples/jsm/shaders/DotScreenShader.js 
 
+![スクリーンショット 2022-10-16 14 31 11](https://user-images.githubusercontent.com/16290220/196022000-2ee21253-e319-4ec1-9ad1-08b89cdc4eb8.png)
+
 ## 参考
 - youtube
   - https://www.youtube.com/watch?v=12yVUxIkag0
+
+
+## 作っててできたもの
+
+https://user-images.githubusercontent.com/16290220/196022037-fd8b6434-dc28-4baf-8552-212ea2d33061.mov
+
+https://user-images.githubusercontent.com/16290220/196022062-ad672d58-7027-4b85-bda2-3e7fb28ae244.mov
+
+https://user-images.githubusercontent.com/16290220/196022078-8e18fab6-29a7-476e-a540-1a5a228f10cb.mov
+
+https://user-images.githubusercontent.com/16290220/196022108-e3befd53-cc8e-430f-9cd6-3dfddd859192.mov
